@@ -12,7 +12,15 @@ class Item(models.Model):
 
 
 class Bucket(models.Model):
-    items = models.ManyToManyField(Item)
+    items = models.ManyToManyField(Item, related_name="item_bucket", through="product.BucketItems")
     owner = models.ForeignKey(User, on_delete=models.CASCADE, blank=True)
     last_modified = models.DateTimeField(auto_now=True)
+
+    objects = models.Manager()
+
+
+class BucketItems(models.Model):
+    count = models.PositiveIntegerField(default=0)
+    bucket = models.ForeignKey(Bucket, on_delete=models.CASCADE, related_name="bucket_items_bucket")
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name="bucket_items_item")
 

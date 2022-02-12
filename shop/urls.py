@@ -5,7 +5,9 @@ from django.conf import settings
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('product/', include("product.urls"))
+    path('product/', include("product.urls")),
+    path('root/', include("root.urls"))
+    
 ]
 
 if settings.DEBUG:
