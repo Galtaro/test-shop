@@ -1,7 +1,7 @@
 from rest_framework.fields import ImageField
 from rest_framework.serializers import ModelSerializer, HyperlinkedModelSerializer, HyperlinkedIdentityField,\
     Serializer, IntegerField, CharField, DecimalField
-from product.models import Item, Bucket, Discount
+from product.models import Item, Bucket
 
 
 class ListItemSerializer(HyperlinkedModelSerializer):
@@ -27,11 +27,10 @@ class AddItemSerializer(ModelSerializer):
         fields = ["title", "description", "price", "image"]
 
 
-class UpdateItemSerializer(Serializer):
-    title = CharField()
-    description = CharField()
-    price = DecimalField(max_digits=7, decimal_places=2)
-    image = ImageField()
+class UpdateItemSerializer(ModelSerializer):
+    class Meta:
+        model = Item
+        fields = ("title", "description", "price", "image")
 
 
 class BucketItemSerializer(ModelSerializer):
@@ -46,11 +45,11 @@ class BucketItemSerializer(ModelSerializer):
 
 class BucketSerializer(ModelSerializer):
     items = BucketItemSerializer(many=True)
-    total_price = IntegerField(source="bucket_total_price")  # TODO replace on DecimalField
+    total_price = DecimalField(max_digits=7, decimal_places=2, source="bucket_total_price")
 
     class Meta:
         model = Bucket
-        fields = "__all__"  # TODO add exclude
+        exclude = ["id", "last_modified", "owner"]
         extra_fields = ["total_price"]
 
 
@@ -59,14 +58,22 @@ class AddBucketSerializer(Serializer):
 
 
 class RetrieveItemBucketSerializer(ModelSerializer):
+    price_include_discount = DecimalField(max_digits=7, decimal_places=2)
+
     class Meta:
         model = Item
-        fields = ["title", "description", "price", "image"]
+        fields = ["title", "description", "price", "image", "price_include_discount"]
 
 
-class UpdateBucketItemSerializer(Serializer):
-    count = IntegerField()
+class UpdateBucketItemSerializer(ModelSerializer):
+
+    class Meta:
+        model = Item
+        fields = ["count"]
 
 
-class AddDiscountSerializer(Serializer):
-    discount_percent = IntegerField()
+class AddDiscountSerializer(ModelSerializer):
+
+    class Meta:
+        model = Item
+        fields = ["discount_percent"]

@@ -1,8 +1,8 @@
-from django.db.models import F, Prefetch, Sum
+from django.db.models import F, Prefetch, Sum, Value
 from rest_framework import status
 from rest_framework.generics import RetrieveAPIView, ListAPIView, CreateAPIView, DestroyAPIView, UpdateAPIView
 from rest_framework.response import Response
-from product.models import Item, Bucket, BucketItems, Discount
+from product.models import Item, Bucket, BucketItems
 from product.serializers import ListItemSerializer, RetrieveItemSerializer, BucketSerializer, AddBucketSerializer, \
     RetrieveItemBucketSerializer, UpdateBucketItemSerializer, AddDiscountSerializer, AddItemSerializer, \
     UpdateItemSerializer
@@ -24,7 +24,7 @@ class ListApiItem(ListAPIView):
     def get_queryset(self):
         queryset = Item.objects.all(
         ).annotate(
-            price_include_discount=F("price") * (100 - F("discount_item__discount_percent"))/100
+            price_include_discount=F("price") * (100 - F("discount_percent")) / 100
         )
         return queryset
 
@@ -49,26 +49,6 @@ class UpdateApiItem(UpdateAPIView):
     permission_classes = [HasPermission]
     queryset = Item.objects.all()
 
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        new_title = serializer.validated_data["title"]
-        new_description = serializer.validated_data["description"]
-        new_price = serializer.validated_data["price"]
-        # new_image = serializer.validated_data["image"]
-        items_query = Item.objects.filter(id=instance.id)
-        if items_query.exists():
-            item = items_query.first()
-            item.title = new_title
-            item.description = new_description
-            item.price = new_price
-            # item.image = new_image
-            item.save()
-            return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
-        return Response(serializer.data, status=status.HTTP_406_NOT_ACCEPTABLE)
-
 
 class BucketApi(ListAPIView):
     serializer_class = BucketSerializer
@@ -87,7 +67,10 @@ class BucketApi(ListAPIView):
             ).prefetch_related(
                 Prefetch("items", items_query)
             ).annotate(
-                bucket_total_price=Sum(F("items__price") * F("bucket_items_bucket__count"))
+                bucket_total_price=Sum(
+                    (F("items__price") * (100 - F("items__discount_percent")) / 100) * \
+                    F("bucket_items_bucket__count")
+                )
             )
         else:
             if "bucket_id" in self.request.cookies:
@@ -103,35 +86,42 @@ class AddBucketApi(CreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        item_count = serializer.validated_data["count"]
         item_id = kwargs["pk"]
+        item_count = serializer.validated_data["count"]
         response = Response(serializer.data, status=status.HTTP_201_CREATED)
-        if request.user.is_authenticated:
-            user = request.user
-            bucket_id = user.bucket_set.first().id
-        else:
-            if "bucket_id" in request.cookies:
-                bucket_id = request.cookies["bucket_id"]
+        if item_count != 0:
+            if request.user.is_authenticated:
+                user = request.user
+                bucket_id = user.bucket_set.first().id
             else:
-                bucket_id = Bucket.objects.create().id
-                response.set_cookie("bucket_id", bucket_id)
-        order_query = BucketItems.objects.filter(bucket_id=bucket_id, item_id=item_id)
-        if order_query.exists():  # TODO if count equals zero we have to remove this item from bucket
-            order = order_query.first()
-            order.count += item_count
-            order.save()
-        else:
-            BucketItems.objects.create(count=item_count, bucket_id=bucket_id, item_id=item_id)
-        return response
+                if "bucket_id" in request.cookies:
+                    bucket_id = request.cookies["bucket_id"]
+                else:
+                    bucket_id = Bucket.objects.create().id
+                    response.set_cookie("bucket_id", bucket_id)
+            order_query = BucketItems.objects.filter(bucket_id=bucket_id, item_id=item_id)
+            if order_query.exists():  # TODO if count equals zero we have to remove this item from bucket
+                order = order_query.first()
+                order.count += item_count
+                order.save()
+            else:
+                BucketItems.objects.create(count=item_count, bucket_id=bucket_id, item_id=item_id)
+            return response
+        return Response(serializer.data, status=status.HTTP_406_NOT_ACCEPTABLE)
 
 
 class RetrieveApiBucketItem(RetrieveAPIView):
     serializer_class = RetrieveItemBucketSerializer
-    queryset = Item.objects.all()
+
+    def get_queryset(self):
+        queryset = Item.objects.all().annotate(
+                price_include_discount=F("price") * (100 - F("discount_percent"))/100,
+            )
+        return queryset
 
 
 class DeleteBucketApiItem(DestroyAPIView):
-    queryset = Item.objects
+    queryset = BucketItems.objects
 
 
 class UpdateBucketApiItem(UpdateAPIView):
@@ -140,30 +130,30 @@ class UpdateBucketApiItem(UpdateAPIView):
                 count=F("bucket_items_item__count")
         )
 
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop('partial', False)
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        item_id = kwargs["pk"]
-        item_new_count = serializer.validated_data["count"]
-        bucket_items_query = BucketItems.objects.filter(item_id=item_id)
-        if bucket_items_query.exists():
-            bucket_item = bucket_items_query.first()
-            bucket_item.count = item_new_count
-            bucket_item.save()
-            return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
-        return Response(serializer.data, status=status.HTTP_406_NOT_ACCEPTABLE)
+    # def update(self, request, *args, **kwargs):
+    #     partial = kwargs.pop('partial', False)
+    #     instance = self.get_object()
+    #     serializer = self.get_serializer(instance, data=request.data, partial=partial)
+    #     serializer.is_valid(raise_exception=True)
+    #     item_id = kwargs["pk"]
+    #     item_new_count = serializer.validated_data["count"]
+    #     bucket_items_query = BucketItems.objects.filter(item_id=item_id)
+    #     if bucket_items_query.exists():
+    #         bucket_item = bucket_items_query.first()
+    #         bucket_item.count = item_new_count
+    #         bucket_item.save()
+    #         return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
+    #     return Response(serializer.data, status=status.HTTP_406_NOT_ACCEPTABLE)
 
 
 class AddDiscountApi(CreateAPIView):
     serializer_class = AddDiscountSerializer
     permission_classes = [HasPermission]
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        item_id = kwargs["pk"]
-        discount_percent = serializer.validated_data["discount_percent"]
-        Discount.objects.filter(item_id=item_id).update(discount_percent=discount_percent)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    # def create(self, request, *args, **kwargs):
+    #     serializer = self.get_serializer(data=request.data)
+    #     serializer.is_valid(raise_exception=True)
+    #     item_id = kwargs["pk"]
+    #     discount_percent = serializer.validated_data["discount_percent"]
+    #     Item.objects.filter(id=item_id).update(discount_percent=discount_percent)
+    #     return Response(serializer.data, status=status.HTTP_201_CREATED)
