@@ -1,6 +1,6 @@
 from rest_framework.serializers import ModelSerializer, HyperlinkedModelSerializer, HyperlinkedIdentityField,\
     Serializer, IntegerField, CharField, DecimalField
-from product.models import Item, Bucket, Promocode
+from product.models import Item, Bucket, Promocode, BucketItems
 
 
 class ListItemSerializer(HyperlinkedModelSerializer):
@@ -35,11 +35,12 @@ class UpdateItemSerializer(ModelSerializer):
 class BucketItemSerializer(ModelSerializer):
     total_price = DecimalField(max_digits=7, decimal_places=2)
     count = IntegerField(source="count_")
+    id = IntegerField(source="bucketitem_id")
 
     class Meta:
         model = Item
         exclude = ["image"]
-        extra_fields = ["count"]
+        extra_fields = ["count", "id"]
 
 
 class BucketSerializer(ModelSerializer):
@@ -64,13 +65,12 @@ class RetrieveItemBucketSerializer(ModelSerializer):
         fields = ["title", "description", "price", "image", "price_include_discount"]
 
 
-class UpdateBucketItemSerializer(ModelSerializer):
-    count = IntegerField(source="count_")  # TODO right serializer
+class UpdateBucketItemsSerializer(ModelSerializer):
+    item_id = IntegerField(read_only=True)
 
     class Meta:
-        model = Item
-        exclude = ["title", "description", "price", "image", "discount_percent"]
-        extra_fields = ["count"]
+        model = BucketItems
+        fields = ["count", "item_id"]
 
 
 class AddDiscountSerializer(ModelSerializer):

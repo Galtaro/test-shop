@@ -5,7 +5,7 @@ from rest_framework.generics import RetrieveAPIView, ListAPIView, CreateAPIView,
 from rest_framework.response import Response
 from product.models import Item, Bucket, BucketItems, Promocode
 from product.serializers import ListItemSerializer, RetrieveItemSerializer, BucketSerializer, AddBucketSerializer, \
-    RetrieveItemBucketSerializer, UpdateBucketItemSerializer, AddDiscountSerializer, AddItemSerializer, \
+    RetrieveItemBucketSerializer, UpdateBucketItemsSerializer, AddDiscountSerializer, AddItemSerializer, \
     UpdateItemSerializer, UpdatePromocodeSerializer, PromocodeSerializer, AddPromocodeSerializer, \
     UpdateBucketPromocodeTotalPriceSerializer
 from rest_framework.permissions import BasePermission
@@ -64,7 +64,8 @@ class BucketApi(ListAPIView):
                 item_bucket__owner_id=user.id
             ).annotate(
                 total_price=F("price") * F("bucket_items_item__count"),
-                count_=F("bucket_items_item__count")
+                count_=F("bucket_items_item__count"),
+                bucketitem_id=F("bucket_items_item__id")
             )
             queryset = Bucket.objects.filter(
                 owner_id=user.id
@@ -132,10 +133,16 @@ class DeleteBucketApiItem(DestroyAPIView):
 
 
 class UpdateBucketApiItem(RetrieveUpdateAPIView):
-    serializer_class = UpdateBucketItemSerializer
-    queryset = Item.objects.annotate(
-        count_=F("bucket_items_item__count")
-    )
+    serializer_class = UpdateBucketItemsSerializer
+
+    def get_queryset(self):
+        bucket_id = self.request.COOKIES.get("bucket_id")
+        if bucket_id is None:
+            if self.request.user.is_authenticated:
+                bucket_id = self.request.user.bucket_set.first().id
+            else:
+                return BucketItems.objects.none()
+        return BucketItems.objects.filter(bucket_id=bucket_id, item_id=self.kwargs['pk'])
 
 
 class AddDiscountApi(UpdateAPIView):
@@ -172,11 +179,11 @@ class UpdateBucketApiPromocodeTotalPrice(APIView):
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
-        promocode = serializer.validated_data['promocode']
-        promocode_db = Promocode.objects.first().name
+        promocode_user = serializer.validated_data['promocode']
+        promocode_query = Promocode.objects.filter(name=promocode_user)
         user = request.user
-        bucket_id = user.bucket_set.first().id  # TODO
-        if promocode == promocode_db:
+        bucket_id = user.bucket_set.first().id
+        if promocode_query.exists():
             promocode_discount_coefficient = Decimal((100 - Promocode.objects.first().promocode_discount_percent) / 100)
             if Promocode.objects.first().promocode_summ_discount:
                 queryset = Bucket.objects.filter(id=bucket_id
@@ -184,31 +191,28 @@ class UpdateBucketApiPromocodeTotalPrice(APIView):
                     bucket_total_price=Sum(
                         (F("items__price") * (100 - F("items__discount_percent")) / 100) * \
                         F("bucket_items_bucket__count")) * promocode_discount_coefficient
-                )
-                return Response()
+                ).values("bucket_total_price")
+                return Response(queryset)
             else:
                 tprice_item_bucket_without_discount = 0
                 tprice_item_bucket_with_discount = 0
                 item_bucket_without_discount = BucketItems.objects.filter(
                     Q(item__in=Item.objects.filter(discount_percent=0))
                 )
-                item_bucket_with_discount = BucketItems.objects.filter(
-                    ~Q(item__in=Item.objects.filter(discount_percent=0))
+                item_bucket_with_discount = BucketItems.objects.exclude(
+                    Q(item__in=Item.objects.filter(discount_percent=0))
                 )
                 for item in item_bucket_without_discount:
                     price_item = item.item.price
-                    tprice_item_bucket_without_discount += price_item
+                    price_item_count = price_item * item.count
+                    tprice_item_bucket_without_discount += price_item_count
                 for item in item_bucket_with_discount:
                     price_item = item.item.price
-                    discount_item = item.item.discount
-                    price_item_with_discount = price_item * (100 - discount_item / 100)
-                    tprice_item_bucket_with_discount += price_item_with_discount
-                queryset = Bucket.objects.filter(id=bucket_id
-                                                 ).annotate(
-                    bucket_total_price=Value(tprice_item_bucket_without_discount * promocode_discount_coefficient + \
-                                             tprice_item_bucket_with_discount)
-                )
-                return Response()
+                    discount_item = item.item.discount_percent
+                    price_item_count_with_discount = price_item * (100 - discount_item) / 100 * item.count
+                    tprice_item_bucket_with_discount += price_item_count_with_discount
+                bucket_total_price = tprice_item_bucket_without_discount * promocode_discount_coefficient + \
+                                     tprice_item_bucket_with_discount
+                return Response({"bucket_total_price": bucket_total_price})
         else:
-            return Response()
-
+            return Response(serializer.data, status=406)
