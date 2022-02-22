@@ -4,6 +4,7 @@ from django.contrib.auth.models import AbstractUser, Group
 
 class CustomUser(AbstractUser):
     phone = models.CharField(max_length=15, verbose_name="phone number", unique=True, null=True, blank=True)
+    amount_accrued_cashback = models.PositiveIntegerField(default=0)
 
     class Meta(AbstractUser.Meta):
         swappable = 'AUTH_USER_MODEL'
@@ -14,7 +15,7 @@ class CustomUser(AbstractUser):
     display_group.short_description = 'Group'
 
 
-def add_customuser_group(signal, sender, instance, created, update_fields, raw, using, **kwargs):
+def add_customuser_group(instance, created, **kwargs):
     if created:
         client_group = Group.objects.get(name="Clients")
         instance.groups.add(client_group)

@@ -1,16 +1,18 @@
-from django.db.models import F, Q, Prefetch, Sum, Value
+from django.db.models import F, Q, Prefetch, Sum, Value, FloatField, DecimalField
 from rest_framework import status
 from rest_framework.generics import RetrieveAPIView, ListAPIView, CreateAPIView, DestroyAPIView, UpdateAPIView, \
     RetrieveUpdateAPIView
 from rest_framework.response import Response
-from product.models import Item, Bucket, BucketItems, Promocode
+from product.models import Item, Bucket, BucketItems, Promocode, Cashback, Order, UseCashbackAmount
 from product.serializers import ListItemSerializer, RetrieveItemSerializer, BucketSerializer, AddBucketSerializer, \
     RetrieveItemBucketSerializer, UpdateBucketItemsSerializer, AddDiscountSerializer, AddItemSerializer, \
     UpdateItemSerializer, UpdatePromocodeSerializer, PromocodeSerializer, AddPromocodeSerializer, \
-    UpdateBucketPromocodeTotalPriceSerializer
+    UpdateBucketPromocodeTotalPriceSerializer, CashbackSerializer, UpdateCashbackSerializer, CheckoutSerializer, \
+    BucketTotalPriceSerialzer, AddCashbackSerializer, CashbackPaymentSerializer
 from rest_framework.permissions import BasePermission
 from rest_framework.views import APIView
 from decimal import Decimal
+from product.utils import count_order_sum
 
 
 class HasPermission(BasePermission):
@@ -63,9 +65,10 @@ class BucketApi(ListAPIView):
             items_query = Item.objects.filter(
                 item_bucket__owner_id=user.id
             ).annotate(
-                total_price=F("price") * F("bucket_items_item__count"),
-                count_=F("bucket_items_item__count"),
-                bucketitem_id=F("bucket_items_item__id")
+                total_price_item=F("price") * F("bucket_items_item__count"),
+                count=F("bucket_items_item__count"),
+                bucketitem_id=F("bucket_items_item__id"),
+                price_include_discount=F("price") * (100 - F("discount_percent")) / 100 * F("bucket_items_item__count")
             )
             queryset = Bucket.objects.filter(
                 owner_id=user.id
@@ -74,8 +77,8 @@ class BucketApi(ListAPIView):
             ).annotate(
                 bucket_total_price=Sum(
                     (F("items__price") * (100 - F("items__discount_percent")) / 100) * \
-                    F("bucket_items_bucket__count")
-                )
+                    F("bucket_items_bucket__count")),
+                amount_accrued_cashback_=F("owner__amount_accrued_cashback")
             )
         else:
             if "bucket_id" in self.request.cookies:
@@ -122,8 +125,13 @@ class RetrieveApiBucketItem(RetrieveAPIView):
     serializer_class = RetrieveItemBucketSerializer
 
     def get_queryset(self):
-        queryset = Item.objects.all().annotate(
-            price_include_discount=F("price") * (100 - F("discount_percent")) / 100,
+        queryset = BucketItems.objects.all().annotate(
+            price_include_discount=F("item__price") * (100 - F("item__discount_percent")) / 100,
+            title=F("item__title"),
+            description=F("item__description"),
+            price=F("item__price"),
+            discount_percent=F("item__discount_percent"),
+            total_price_item=F("count") * (F("item__price") * (100 - F("item__discount_percent")) / 100)
         )
         return queryset
 
@@ -191,8 +199,8 @@ class UpdateBucketApiPromocodeTotalPrice(APIView):
                     bucket_total_price=Sum(
                         (F("items__price") * (100 - F("items__discount_percent")) / 100) * \
                         F("bucket_items_bucket__count")) * promocode_discount_coefficient
-                ).values("bucket_total_price")
-                return Response(queryset)
+                )
+                return Response(BucketTotalPriceSerialzer(queryset.first()).data)
             else:
                 tprice_item_bucket_without_discount = 0
                 tprice_item_bucket_with_discount = 0
@@ -215,4 +223,56 @@ class UpdateBucketApiPromocodeTotalPrice(APIView):
                                      tprice_item_bucket_with_discount
                 return Response({"bucket_total_price": bucket_total_price})
         else:
-            return Response(serializer.data, status=406)
+            return Response("Promocode is not valid", status=status.HTTP_406_NOT_ACCEPTABLE)
+
+
+class CashbackAPI(ListAPIView):
+    serializer_class = CashbackSerializer
+    permission_classes = [HasPermission]
+    queryset = Cashback.objects
+
+
+class AddCashbackApi(CreateAPIView):
+    serializer_class = AddCashbackSerializer
+    permission_classes = [HasPermission]
+
+
+class UpdateCashbackAPI(RetrieveUpdateAPIView):
+    serializer_class = UpdateCashbackSerializer
+    permission_classes = [HasPermission]
+    queryset = Cashback.objects
+
+
+class CheckoutAPI(CreateAPIView):
+    serializer_class = CheckoutSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = self.request.user
+        order_sum = count_order_sum(user)
+        Order.objects.create(account=user, order_sum=order_sum)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class CashbackPaymentAPI(APIView):
+    serializer_class = CashbackPaymentSerializer
+
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        cashback_payment = serializer.validated_data['cashback_payment']
+        user = self.request.user
+        user_cashback = user.amount_accrued_cashback
+        min_amount_use_cashback = UseCashbackAmount.objects.first().min_amount_use_cashback
+        if user_cashback >= min_amount_use_cashback:
+            bucket_total_price = count_order_sum(user)
+            bucket_total_price -= cashback_payment
+            user_cashback -= cashback_payment
+            user.amount_accrued_cashback = user_cashback
+            user.save()
+            return Response({"bucket_total_price": bucket_total_price, "amount_accrued_cashback": user_cashback})
+        return Response(
+            "The amount of accrued cashback is less than the minimum usage threshold", status=status.HTTP_406_NOT_ACCEPTABLE
+        )
+

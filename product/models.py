@@ -45,3 +45,27 @@ class Promocode(models.Model):
     promocode_summ_discount = models.BooleanField(default=False)
 
     objects = models.Manager()
+
+
+class Cashback(models.Model):
+    min_order_amount = models.PositiveIntegerField(default=0, validators=[validators.MinValueValidator(0)])
+    cashback_percent = models.PositiveIntegerField(default=0, validators=[validators.MinValueValidator(0)])
+    last_modified = models.DateTimeField(auto_now=True)
+
+    objects = models.Manager()
+
+
+class UseCashbackAmount(models.Model):
+    min_amount_use_cashback = models.PositiveIntegerField(default=0, validators=[validators.MinValueValidator(0)])
+    last_modified = models.DateTimeField(auto_now=True)
+
+    objects = models.Manager()
+
+
+class Order(models.Model):
+    account = models.ForeignKey(User, on_delete=models.CASCADE, related_name="order_user")
+    order_sum = models.DecimalField(max_digits=20, decimal_places=15)
+    order_date = models.DateField(auto_now_add=True)
+    payment_status = models.BooleanField(default=False)
+
+    objects = models.Manager()

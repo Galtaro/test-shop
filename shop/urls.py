@@ -6,8 +6,11 @@ from django.conf import settings
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('product/', include("product.urls")),
-    path('root/', include("root.urls"))
-    
+    path('root/', include("root.urls")),
+    path('auth/', include('djoser.urls')),
+    path('auth/', include('djoser.urls.authtoken')),
+    path('auth/', include('djoser.urls.jwt')),
+
 ]
 
 if settings.DEBUG:
