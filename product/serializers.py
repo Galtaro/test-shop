@@ -9,14 +9,14 @@ class ListItemSerializer(HyperlinkedModelSerializer):
 
     class Meta:
         model = Item
-        fields = ["id", "title", "price", "price_include_discount", "detail"]
+        fields = ["id", "title", "price", "discount_percent", "price_include_discount", "detail"]
 
 
 class RetrieveItemSerializer(ModelSerializer):
 
     class Meta:
         model = Item
-        fields = ["title", "description", "price", "image"]
+        fields = ["title", "description", "image"]
 
 
 class AddItemSerializer(ModelSerializer):
@@ -72,11 +72,11 @@ class RetrieveItemBucketSerializer(ModelSerializer):
 
 
 class UpdateBucketItemsSerializer(ModelSerializer):
-    item_id = IntegerField(read_only=True)
+    id = IntegerField(read_only=True)
 
     class Meta:
         model = BucketItems
-        fields = ["count", "item_id"]
+        fields = ["count", "id"]
 
 
 class AddDiscountSerializer(ModelSerializer):
@@ -140,4 +140,4 @@ class BucketTotalPriceSerialzer(Serializer):
 
 
 class CashbackPaymentSerializer(Serializer):
-    cashback_payment = DecimalField(max_digits=8, decimal_places=4)
+    cashback_payment = DecimalField(max_digits=8, decimal_places=4, min_value=0)

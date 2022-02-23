@@ -42,3 +42,15 @@ class AccountOrdersSerializer(ModelSerializer):
     class Meta:
         model = Order
         fields = "__all__"
+
+
+class LoginUserSerializer(Serializer):
+    username = CharField()
+    password_1 = CharField(required=True, write_only=True)
+    password_2 = CharField(required=True, write_only=True)
+
+    def validate(self, attrs):
+        if attrs["password_1"] != attrs["password_2"]:
+            raise ValidationError(detail="password must be equals")
+        return attrs
+

@@ -1,6 +1,10 @@
 from decimal import Decimal
-from rest_framework.generics import CreateAPIView, ListAPIView
-from root.serializers import CreateUserSerializer, AccountOrdersSerializer
+
+from django.contrib.auth import authenticate, login, logout
+from rest_framework.generics import CreateAPIView, ListAPIView, GenericAPIView
+from rest_framework.permissions import IsAuthenticated
+
+from root.serializers import CreateUserSerializer, AccountOrdersSerializer, LoginUserSerializer
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -18,8 +22,30 @@ class Register(CreateAPIView):
         return response
 
 
+class Login(GenericAPIView):
+    serializer_class = LoginUserSerializer
+
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        username = serializer.validated_data["username"]
+        password = serializer.validated_data["password_1"]
+        user = authenticate(username=username, password=password)
+        if user is None:
+            return Response("user with this credential doesn't exist ")
+        login(request, user)
+        return Response("authenticate successful", status=status.HTTP_200_OK)
+
+
+class Logout(APIView):
+    def post(self, request):
+        logout(request)
+        return Response("logout successful", status=status.HTTP_200_OK)
+
+
 class AccountOrdersAPI(ListAPIView):
     serializer_class = AccountOrdersSerializer
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
@@ -28,6 +54,7 @@ class AccountOrdersAPI(ListAPIView):
 
 
 class AccountOrdersPayAPI(APIView):
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
         order_id = kwargs["pk"]
