@@ -1,6 +1,7 @@
+from rest_framework.exceptions import ValidationError
 from rest_framework.serializers import ModelSerializer, HyperlinkedModelSerializer, HyperlinkedIdentityField,\
     Serializer, IntegerField, CharField, DecimalField
-from product.models import Item, Bucket, Promocode, BucketItems, Cashback
+from product.models import Item, Bucket, Promocode, BucketItems, Cashback, UseCashbackAmount
 
 
 class ListItemSerializer(HyperlinkedModelSerializer):
@@ -19,7 +20,7 @@ class RetrieveItemSerializer(ModelSerializer):
         fields = ["title", "description", "image"]
 
 
-class AddItemSerializer(ModelSerializer):
+class CreateItemSerializer(ModelSerializer):
 
     class Meta:
         model = Item
@@ -32,7 +33,7 @@ class UpdateItemSerializer(ModelSerializer):
         fields = ("title", "description", "price", "image")
 
 
-class BucketItemSerializer(ModelSerializer):
+class ListBucketItemSerializer(ModelSerializer):
     price_include_discount = DecimalField(max_digits=7, decimal_places=2)
     total_price_item = DecimalField(max_digits=7, decimal_places=2)
     count = IntegerField()
@@ -43,8 +44,8 @@ class BucketItemSerializer(ModelSerializer):
         fields = ["bucketitem_id", "title", "price", "discount_percent", "price_include_discount", "count", "total_price_item"]
 
 
-class BucketSerializer(ModelSerializer):
-    items = BucketItemSerializer(many=True)
+class ListBucketSerializer(ModelSerializer):
+    items = ListBucketItemSerializer(many=True)
     total_price = DecimalField(max_digits=7, decimal_places=2, source="bucket_total_price")
     amount_accrued_cashback = DecimalField(max_digits=7, decimal_places=2, source="amount_accrued_cashback_")
 
@@ -54,8 +55,8 @@ class BucketSerializer(ModelSerializer):
         extra_fields = ["total_price", "amount_accrued_cashback"]
 
 
-class AddBucketSerializer(Serializer):
-    count = IntegerField()
+class CreateBucketItemSerializer(Serializer):
+    count = IntegerField(min_value=1)
 
 
 class RetrieveItemBucketSerializer(ModelSerializer):
@@ -79,21 +80,21 @@ class UpdateBucketItemsSerializer(ModelSerializer):
         fields = ["count", "id"]
 
 
-class AddDiscountSerializer(ModelSerializer):
+class UpdateDiscountSerializer(ModelSerializer):
 
     class Meta:
         model = Item
         fields = ["discount_percent"]
 
 
-class PromocodeSerializer(ModelSerializer):
+class ListPromocodeSerializer(ModelSerializer):
 
     class Meta:
         model = Promocode
         fields = "__all__"
 
 
-class AddPromocodeSerializer(ModelSerializer):
+class CreatePromocodeSerializer(ModelSerializer):
 
     class Meta:
         model = Promocode
@@ -110,19 +111,29 @@ class UpdatePromocodeSerializer(ModelSerializer):
 class UpdateBucketPromocodeTotalPriceSerializer(Serializer):
     promocode = CharField(max_length=8, allow_blank=False)
 
+    def validate(self, attrs):
+        promocode = self.initial_data["promocode"]
+        promocode_query = Promocode.objects.filter(name=promocode)
+        if not promocode_query.exists():
+            raise ValidationError({
+                "detail": "This promo code is not valid"
+            }, code='invalid')
+        return attrs
 
-class CashbackSerializer(ModelSerializer):
+
+class ListCashbackSerializer(ModelSerializer):
 
     class Meta:
         model = Cashback
         fields = "__all__"
 
 
-class AddCashbackSerializer(ModelSerializer):
+class CreateCashbackSerializer(ModelSerializer):
 
     class Meta:
         model = Cashback
         fields = ["min_order_amout", "cashback_percent"]
+
 
 class UpdateCashbackSerializer(ModelSerializer):
 
@@ -131,13 +142,25 @@ class UpdateCashbackSerializer(ModelSerializer):
         exclude = ["id"]
 
 
-class CheckoutSerializer(Serializer):
+class CreateCheckoutSerializer(Serializer):
     total_price = DecimalField(max_digits=7, decimal_places=2, source="bucket.bucket_total_price", read_only=True)
-
-
-class BucketTotalPriceSerialzer(Serializer):
-    bucket_total_price = DecimalField(max_digits=7, decimal_places=2)
 
 
 class CashbackPaymentSerializer(Serializer):
     cashback_payment = DecimalField(max_digits=8, decimal_places=4, min_value=0)
+
+    def validate(self, attrs):
+        cashback_payment = int(self.initial_data["cashback_payment"])
+        min_amount_use_cashback = UseCashbackAmount.objects.first().min_amount_use_cashback
+        user = self.context.get('request').user
+        user_cashback = user.amount_accrued_cashback
+        if user_cashback < min_amount_use_cashback:
+            raise ValidationError({
+                "detail": "The amount of accrued cashback is less than the minimum usage threshold"
+            }, code='invalid')
+        if user_cashback < cashback_payment:
+            raise ValidationError({
+                "detail": "The amount of cashback withdrawn is greater than the amount of the account balance. \
+                Try again"
+            }, code='invalid')
+        return attrs

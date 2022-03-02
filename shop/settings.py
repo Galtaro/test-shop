@@ -42,7 +42,6 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'djoser',
-
 ]
 
 MIDDLEWARE = [
@@ -125,6 +124,8 @@ USE_L10N = True
 
 USE_TZ = True
 
+CELERY_TASK_TIME_LIMIT = 30 * 60
+CELERY_BROKER_URL = "redis://localhost:6379/0"
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/3.2/howto/static-files/
@@ -147,14 +148,14 @@ AUTH_USER_MODEL = 'root.CustomUser'
 #     'SEND_ACTIVATION_EMAIL': True,
 #     'SERIALIZERS': {},
 # }
-
+#
 # REST_FRAMEWORK = {
 #     'DEFAULT_AUTHENTICATION_CLASSES': (
 #         'rest_framework.authentication.TokenAuthentication',
 #         'rest_framework_simplejwt.authentication.JWTAuthentication'
 #     ),
 # }
-
+#
 # EMAIL_USE_TLS = True
 # EMAIL_HOST = 'smtp.gmail.com'
 # EMAIL_HOST_USER = 'TestUser24071987@gmail.com'

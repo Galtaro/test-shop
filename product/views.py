@@ -1,38 +1,35 @@
-from django.db.models import F, Q, Prefetch, Sum, Value, FloatField, DecimalField
 from rest_framework import status
-from rest_framework.generics import RetrieveAPIView, ListAPIView, CreateAPIView, DestroyAPIView, UpdateAPIView, \
-    RetrieveUpdateAPIView
+from rest_framework.generics import RetrieveAPIView, ListAPIView, CreateAPIView, UpdateAPIView, \
+    RetrieveUpdateAPIView, RetrieveUpdateDestroyAPIView, ListCreateAPIView
 from rest_framework.response import Response
-from product.models import Item, Bucket, BucketItems, Promocode, Cashback, Order, UseCashbackAmount
-from product.serializers import ListItemSerializer, RetrieveItemSerializer, BucketSerializer, AddBucketSerializer, \
-    RetrieveItemBucketSerializer, UpdateBucketItemsSerializer, AddDiscountSerializer, AddItemSerializer, \
-    UpdateItemSerializer, UpdatePromocodeSerializer, PromocodeSerializer, AddPromocodeSerializer, \
-    UpdateBucketPromocodeTotalPriceSerializer, CashbackSerializer, UpdateCashbackSerializer, CheckoutSerializer, \
-    BucketTotalPriceSerialzer, AddCashbackSerializer, CashbackPaymentSerializer
+from product.models import Item, BucketItems, Promocode, Cashback
+from product.serializers import ListItemSerializer, RetrieveItemSerializer, ListBucketSerializer, CreateBucketItemSerializer, \
+    RetrieveItemBucketSerializer, UpdateBucketItemsSerializer, UpdateDiscountSerializer, CreateItemSerializer, \
+    UpdateItemSerializer, UpdatePromocodeSerializer, ListPromocodeSerializer, UpdateBucketPromocodeTotalPriceSerializer, \
+    ListCashbackSerializer, UpdateCashbackSerializer, CreateCheckoutSerializer, CashbackPaymentSerializer
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.views import APIView
-from decimal import Decimal
-from product.utils import count_order_sum, count_promocode
+from product.utils.bucket import queryset_bucket_specific_user, create_order
+from product.utils.bucket_item import create_bucket_item, queryset_bucket_items
+from product.utils.cashback import count_bucket_total_price_with_cashback
+from product.utils.item import create_queryset_item
+from product.utils.promocode import count_bucket_total_price_after_use_promocode, set_cookie_promocode
 
 
 class HasPermission(BasePermission):
+
     def has_permission(self, request, view):
         user = request.user
         group_user = user.groups.first().name
-        if group_user == "Managers":
-            return True
-        return False
+        return group_user == "Managers"
 
 
 class ListApiItem(ListAPIView):
     serializer_class = ListItemSerializer
 
     def get_queryset(self):
-        queryset = Item.objects.all(
-        ).annotate(
-            price_include_discount=F("price") * (100 - F("discount_percent")) / 100
-        )
-        return queryset
+        queryset_item = create_queryset_item()
+        return queryset_item
 
 
 class RetrieveApiItem(RetrieveAPIView):
@@ -40,74 +37,41 @@ class RetrieveApiItem(RetrieveAPIView):
     queryset = Item.objects.all()
 
 
-class AddApiItem(CreateAPIView):
-    serializer_class = AddItemSerializer
+class CreateApiItem(CreateAPIView):
+    serializer_class = CreateItemSerializer
     permission_classes = [IsAuthenticated, HasPermission]
 
 
-class DeleteApiItem(DestroyAPIView):
-    permission_classes = [IsAuthenticated, HasPermission]
-    queryset = Item.objects
-
-
-class UpdateApiItem(RetrieveUpdateAPIView):
+class UpdateDestroyApiItem(RetrieveUpdateDestroyAPIView):
     serializer_class = UpdateItemSerializer
     permission_classes = [IsAuthenticated, HasPermission]
     queryset = Item.objects
 
 
-class BucketApi(ListAPIView):
-    serializer_class = BucketSerializer
+class ListApiBucket(ListAPIView):
+    serializer_class = ListBucketSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        user = self.request.user
-        items_query = Item.objects.filter(
-            item_bucket__owner_id=user.id
-        ).annotate(
-            total_price_item=F("price") * F("bucket_items_item__count"),
-            count=F("bucket_items_item__count"),
-            bucketitem_id=F("bucket_items_item__id"),
-            price_include_discount=F("price") * (100 - F("discount_percent")) / 100 * F("bucket_items_item__count")
-        )
-        queryset = Bucket.objects.filter(
-            owner_id=user.id
-        ).prefetch_related(
-            Prefetch("items", items_query)
-        ).annotate(
-            bucket_total_price=Sum(
-                (F("items__price") * (100 - F("items__discount_percent")) / 100) * \
-                F("bucket_items_bucket__count")),
-            amount_accrued_cashback_=F("owner__amount_accrued_cashback")
-        )
-        return queryset
+        user_id = self.request.user.id
+        queryset_bucket = queryset_bucket_specific_user(user_id=user_id)
+        return queryset_bucket
 
 
-class AddBucketApi(CreateAPIView):
+class CreateApiBucketItem(CreateAPIView):
 
-    serializer_class = AddBucketSerializer
+    serializer_class = CreateBucketItemSerializer
     permission_classes = [IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        item_id = kwargs["pk"]
         item_count = serializer.validated_data["count"]
-        if item_count != 0:
-            user = request.user
-            bucket_id = user.bucket_set.first().id
-            order_query = BucketItems.objects.filter(bucket_id=bucket_id, item_id=item_id)
-            if order_query.exists():
-                order = order_query.first()
-                order.count += item_count
-                if order.count <= 0:
-                    order.delete()
-                    return Response(serializer.data, status=status.HTTP_201_CREATED)
-                order.save()
-            else:
-                BucketItems.objects.create(count=item_count, bucket_id=bucket_id, item_id=item_id)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.data, status=status.HTTP_406_NOT_ACCEPTABLE)
+        item_id = kwargs["pk"]
+        user = request.user
+        bucket_id = user.bucket_set.first().id
+        status_code = create_bucket_item(item_count=item_count, item_id=item_id, bucket_id=bucket_id)
+        return Response(serializer.data, status=status_code)
 
 
 class RetrieveApiBucketItem(RetrieveAPIView):
@@ -116,24 +80,11 @@ class RetrieveApiBucketItem(RetrieveAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = BucketItems.objects.all().annotate(
-            price_include_discount=F("item__price") * (100 - F("item__discount_percent")) / 100,
-            title=F("item__title"),
-            description=F("item__description"),
-            price=F("item__price"),
-            discount_percent=F("item__discount_percent"),
-            total_price_item=F("count") * (F("item__price") * (100 - F("item__discount_percent")) / 100)
-        )
+        queryset = queryset_bucket_items()
         return queryset
 
 
-class DeleteBucketApiItem(DestroyAPIView):
-    permission_classes = [IsAuthenticated]
-
-    queryset = BucketItems.objects
-
-
-class UpdateBucketApiItem(RetrieveUpdateAPIView):
+class UpdateDestroyApiBucketItem(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = UpdateBucketItemsSerializer
 
@@ -143,35 +94,25 @@ class UpdateBucketApiItem(RetrieveUpdateAPIView):
         return queryset
 
 
-class AddDiscountApi(UpdateAPIView):
-    serializer_class = AddDiscountSerializer
+class UpdateApiDiscount(UpdateAPIView):
+    serializer_class = UpdateDiscountSerializer
     permission_classes = [IsAuthenticated, HasPermission]
     queryset = Item.objects
 
 
-class PromocodeApi(ListAPIView):
-    serializer_class = PromocodeSerializer
+class ListCreateApiPromocode(ListCreateAPIView):
+    serializer_class = ListPromocodeSerializer
     permission_classes = [IsAuthenticated, HasPermission]
     queryset = Promocode.objects
 
 
-class AddPromocodeApi(CreateAPIView):
-    serializer_class = AddPromocodeSerializer
-    permission_classes = [IsAuthenticated, HasPermission]
-
-
-class UpdatePromocodeApi(UpdateAPIView):
+class UpdateDestroyApiPromocode(UpdateDestroyApiItem):
     serializer_class = UpdatePromocodeSerializer
     permission_classes = [IsAuthenticated, HasPermission]
     queryset = Promocode.objects
 
 
-class DeletePromocodeApi(DestroyAPIView):
-    permission_classes = [IsAuthenticated, HasPermission]
-    queryset = Promocode.objects
-
-
-class UpdateBucketApiPromocodeTotalPrice(APIView):
+class UpdateApiBucketPromocodeTotalPrice(APIView):
     serializer_class = UpdateBucketPromocodeTotalPriceSerializer
     permission_classes = [IsAuthenticated]
 
@@ -179,66 +120,29 @@ class UpdateBucketApiPromocodeTotalPrice(APIView):
         serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
         promocode_user = serializer.validated_data['promocode']
-        promocode_query = Promocode.objects.filter(name=promocode_user)
         user = request.user
         bucket_id = user.bucket_set.first().id
-        if promocode_query.exists():
-            promocode_discount_coefficient = Decimal((100 - Promocode.objects.first().promocode_discount_percent) / 100)
-            if Promocode.objects.first().promocode_summ_discount:
-                queryset = Bucket.objects.filter(id=bucket_id
-                                                 ).annotate(
-                    bucket_total_price=Sum(
-                        (F("items__price") * (100 - F("items__discount_percent")) / 100) * \
-                        F("bucket_items_bucket__count")) * promocode_discount_coefficient
-                )
-                response = Response(BucketTotalPriceSerialzer(queryset.first()).data)
-                response.set_cookie("promocode", promocode_user, 600)
-                return response
-            else:
-                tprice_item_bucket_without_discount = 0
-                tprice_item_bucket_with_discount = 0
-                item_bucket_without_discount = BucketItems.objects.filter(
-                    Q(item__in=Item.objects.filter(discount_percent=0))
-                )
-                item_bucket_with_discount = BucketItems.objects.exclude(
-                    Q(item__in=Item.objects.filter(discount_percent=0))
-                )
-                for item in item_bucket_without_discount:
-                    price_item = item.item.price
-                    price_item_count = price_item * item.count
-                    tprice_item_bucket_without_discount += price_item_count
-                for item in item_bucket_with_discount:
-                    price_item = item.item.price
-                    discount_item = item.item.discount_percent
-                    price_item_count_with_discount = price_item * (100 - discount_item) / 100 * item.count
-                    tprice_item_bucket_with_discount += price_item_count_with_discount
-                bucket_total_price = tprice_item_bucket_without_discount * promocode_discount_coefficient + tprice_item_bucket_with_discount
-                response = Response({"bucket_total_price": bucket_total_price})
-                response.set_cookie("promocode", promocode_user, 600)
-                return response
-        else:
-            return Response("Promocode is not valid", status=status.HTTP_406_NOT_ACCEPTABLE)
+        bucket_total_price = count_bucket_total_price_after_use_promocode(
+            promocode_user=promocode_user, bucket_id=bucket_id)
+        response = Response({"bucket_total_price": bucket_total_price})
+        set_cookie_promocode(response, promocode_user)
+        return response
 
 
-class CashbackAPI(ListAPIView):
-    serializer_class = CashbackSerializer
+class ListCreateApiCashback(ListCreateAPIView):
+    serializer_class = ListCashbackSerializer
     permission_classes = [IsAuthenticated, HasPermission]
     queryset = Cashback.objects
 
 
-class AddCashbackApi(CreateAPIView):
-    serializer_class = AddCashbackSerializer
-    permission_classes = [IsAuthenticated, HasPermission]
-
-
-class UpdateCashbackAPI(RetrieveUpdateAPIView):
+class UpdateApiCashback(RetrieveUpdateAPIView):
     serializer_class = UpdateCashbackSerializer
     permission_classes = [IsAuthenticated, HasPermission]
     queryset = Cashback.objects
 
 
-class CheckoutAPI(CreateAPIView):
-    serializer_class = CheckoutSerializer
+class CreateApiCheckout(CreateAPIView):
+    serializer_class = CreateCheckoutSerializer
     permission_classes = [IsAuthenticated]
 
     def create(self, request, *args, **kwargs):
@@ -246,41 +150,21 @@ class CheckoutAPI(CreateAPIView):
         serializer.is_valid(raise_exception=True)
         user = self.request.user
         bucket = user.bucket_set.first().id
-        order_sum = count_order_sum(user)
-        Order.objects.create(account=user, order_sum=order_sum)
-        BucketItems.objects.filter(bucket=bucket).delete()
+        create_order(user=user, bucket=bucket)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-class CashbackPaymentAPI(APIView):
+class ApiCashbackPayment(APIView):
     serializer_class = CashbackPaymentSerializer
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        serializer = self.serializer_class(data=request.data)
+        serializer = self.serializer_class(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         cashback_payment = serializer.validated_data['cashback_payment']
         user = self.request.user
-        user_cashback = user.amount_accrued_cashback
-        min_amount_use_cashback = UseCashbackAmount.objects.first().min_amount_use_cashback
-        if user_cashback >= min_amount_use_cashback:
-            if user_cashback >= cashback_payment:
-                promocode_user = request.COOKIES.get("promocode")
-                if promocode_user:
-                    bucket_total_price = count_promocode(self, request, promocode_user)
-                else:
-                    bucket_total_price = count_order_sum(user)
-                bucket_total_price -= cashback_payment
-                user_cashback -= cashback_payment
-                user.amount_accrued_cashback = user_cashback
-                user.save()
-                return Response({"bucket_total_price": bucket_total_price, "amount_accrued_cashback": user_cashback})
-            else:
-                return Response(
-                    "The amount of cashback withdrawn is greater than the amount of the account balance. Try again",
-                    status=status.HTTP_406_NOT_ACCEPTABLE
-                )
-        return Response(
-            "The amount of accrued cashback is less than the minimum usage threshold", status=status.HTTP_406_NOT_ACCEPTABLE
-        )
+        promocode_user = request.COOKIES.get("promocode")
+        bucket_total_price, user_cashback = count_bucket_total_price_with_cashback(
+            user=user, promocode_user=promocode_user, cashback_payment=cashback_payment)
+        return Response({"bucket_total_price": bucket_total_price, "amount_accrued_cashback": user_cashback})
 

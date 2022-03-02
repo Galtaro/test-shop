@@ -1,14 +1,12 @@
-from decimal import Decimal
-
 from django.contrib.auth import authenticate, login, logout
 from rest_framework.generics import CreateAPIView, ListAPIView, GenericAPIView
 from rest_framework.permissions import IsAuthenticated
-
 from root.serializers import CreateUserSerializer, AccountOrdersSerializer, LoginUserSerializer
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from product.models import Bucket, Order, Cashback
+from product.models import Bucket, Order
+from root.utils.account import count_amount_of_accrued_cashback
 
 
 class Register(CreateAPIView):
@@ -56,23 +54,13 @@ class AccountOrdersAPI(ListAPIView):
 class AccountOrdersPayAPI(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, *args, **kwargs):
+    def post(self, request, **kwargs):
         order_id = kwargs["pk"]
+        user = request.user
         order = Order.objects.get(id=order_id)
         if order.payment_status:
             return Response("This order has already been paid.", status=status.HTTP_406_NOT_ACCEPTABLE)
-        order.payment_status = True
-        order.save()
-        user = request.user
-        order_sum = Order.objects.get(id=order_id).order_sum
-        queryset_cashback = Cashback.objects.order_by("-min_order_amount")
-        for elem_queryset in queryset_cashback:
-            if elem_queryset.min_order_amount <= order_sum:
-                cashback_percent = elem_queryset.cashback_percent
-                order_cashback = order_sum * Decimal(cashback_percent/100)
-                user.amount_accrued_cashback += order_cashback
-                user.save()
-                break
+        count_amount_of_accrued_cashback(user=user, order=order)
         return Response("Payment completed successfully", status=status.HTTP_200_OK)
 
 
