@@ -1,5 +1,7 @@
-from rest_framework.serializers import Serializer, CharField, EmailField, ValidationError, IntegerField, ModelSerializer
+from rest_framework.serializers import Serializer, CharField, EmailField, ValidationError, IntegerField, \
+    ModelSerializer
 from django.contrib.auth import get_user_model
+
 from product.models import Bucket, Order
 
 User = get_user_model()
@@ -33,7 +35,6 @@ class CreateUserSerializer(Serializer):
         user.set_password(validated_data["password_1"])
         user.save()
         Bucket.objects.create(owner=user)
-
         return user
 
 
@@ -41,7 +42,7 @@ class AccountOrdersSerializer(ModelSerializer):
 
     class Meta:
         model = Order
-        fields = "__all__"
+        fields = ["id", "order_sum", "order_date", "account"]
 
 
 class LoginUserSerializer(Serializer):
@@ -53,4 +54,6 @@ class LoginUserSerializer(Serializer):
         if attrs["password_1"] != attrs["password_2"]:
             raise ValidationError(detail="password must be equals")
         return attrs
+
+
 

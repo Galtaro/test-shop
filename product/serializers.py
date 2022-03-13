@@ -1,7 +1,12 @@
-from rest_framework.exceptions import ValidationError
 from rest_framework.serializers import ModelSerializer, HyperlinkedModelSerializer, HyperlinkedIdentityField,\
     Serializer, IntegerField, CharField, DecimalField
-from product.models import Item, Bucket, Promocode, BucketItems, Cashback, UseCashbackAmount
+from rest_framework.exceptions import ValidationError
+
+from datetime import timedelta
+from django.utils.timezone import now
+
+from product.models import Item, Bucket, Promocode, BucketItems, Cashback, UseCashbackAmount, EmailDeliveryNotification, \
+    Order
 
 
 class ListItemSerializer(HyperlinkedModelSerializer):
@@ -46,8 +51,16 @@ class ListBucketItemSerializer(ModelSerializer):
 
 class ListBucketSerializer(ModelSerializer):
     items = ListBucketItemSerializer(many=True)
-    total_price = DecimalField(max_digits=7, decimal_places=2, source="bucket_total_price")
-    amount_accrued_cashback = DecimalField(max_digits=7, decimal_places=2, source="amount_accrued_cashback_")
+    total_price = DecimalField(
+        max_digits=7,
+        decimal_places=2,
+        source="bucket_total_price"
+    )
+    amount_accrued_cashback = DecimalField(
+        max_digits=7,
+        decimal_places=2,
+        source="amount_accrued_cashback_"
+    )
 
     class Meta:
         model = Bucket
@@ -69,7 +82,9 @@ class RetrieveItemBucketSerializer(ModelSerializer):
 
     class Meta:
         model = BucketItems
-        fields = ["title", "description", "price", "discount_percent", "price_include_discount", "count", "total_price_item"]
+        fields = [
+            "title", "description", "price", "discount_percent", "price_include_discount", "count", "total_price_item"
+        ]
 
 
 class UpdateBucketItemsSerializer(ModelSerializer):
@@ -142,8 +157,30 @@ class UpdateCashbackSerializer(ModelSerializer):
         exclude = ["id"]
 
 
-class CreateCheckoutSerializer(Serializer):
-    total_price = DecimalField(max_digits=7, decimal_places=2, source="bucket.bucket_total_price", read_only=True)
+class CreateCheckoutSerializer(ModelSerializer):
+    total_price = DecimalField(
+        max_digits=7,
+        decimal_places=2,
+        source="bucket.bucket_total_price",
+        read_only=True
+    )
+
+    class Meta:
+        model = Order
+        fields = ["delivery_date_time", "email_delivery_notification", "total_price"]
+
+    def validate(self, attrs):
+        min_time_delivery = now() + timedelta(hours=3)
+        delivery_date_time = attrs["delivery_date_time"]
+        if delivery_date_time < min_time_delivery:
+            raise ValidationError(detail="enter valid delivery time")
+        email_delivery_notification = attrs["email_delivery_notification"]
+        queryset = EmailDeliveryNotification.objects.filter(
+            hour_before_delivery=email_delivery_notification.hour_before_delivery
+        )
+        if not queryset:
+            raise ValidationError(detail="enter valid notification delivery time")
+        return attrs
 
 
 class CashbackPaymentSerializer(Serializer):
@@ -155,12 +192,13 @@ class CashbackPaymentSerializer(Serializer):
         user = self.context.get('request').user
         user_cashback = user.amount_accrued_cashback
         if user_cashback < min_amount_use_cashback:
-            raise ValidationError({
-                "detail": "The amount of accrued cashback is less than the minimum usage threshold"
-            }, code='invalid')
+            raise ValidationError(
+                {"detail": "The amount of accrued cashback is less than the minimum usage threshold"},
+                code='invalid'
+            )
         if user_cashback < cashback_payment:
-            raise ValidationError({
-                "detail": "The amount of cashback withdrawn is greater than the amount of the account balance. \
-                Try again"
-            }, code='invalid')
+            raise ValidationError(
+                {"detail": "The amount of cashback withdrawn is greater than the amount of the account balance. \
+                Try again"},
+                code='invalid')
         return attrs

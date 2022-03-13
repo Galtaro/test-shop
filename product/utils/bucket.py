@@ -1,4 +1,5 @@
 from django.db.models import F, Sum, Prefetch
+
 from product.models import Item, Bucket, BucketItems, Order
 
 
@@ -34,10 +35,15 @@ def queryset_bucket_specific_user(user_id):
     return queryset_bucket
 
 
-def create_order(user, bucket):
+def create_order(user, bucket, delivery_date_time, email_delivery_notification):
     """ Count bucket total price after use checkout, create order, empty the bucket"""
 
     queryset = queryset_bucket_specific_user(user.id)
     order_sum = queryset.first().bucket_total_price
-    Order.objects.create(account=user, order_sum=order_sum)
+    order = Order.objects.create(
+        account=user,
+        order_sum=order_sum,
+        delivery_date_time=delivery_date_time,
+        email_delivery_notification=email_delivery_notification)
     BucketItems.objects.filter(bucket=bucket).delete()
+    return order

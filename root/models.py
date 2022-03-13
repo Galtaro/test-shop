@@ -3,7 +3,13 @@ from django.contrib.auth.models import AbstractUser, Group
 
 
 class CustomUser(AbstractUser):
-    phone = models.CharField(max_length=15, verbose_name="phone number", unique=True, null=True, blank=True)
+    phone = models.CharField(
+        max_length=15,
+        verbose_name="phone number",
+        unique=True,
+        null=True,
+        blank=True
+    )
     amount_accrued_cashback = models.PositiveIntegerField(default=0)
 
     class Meta(AbstractUser.Meta):

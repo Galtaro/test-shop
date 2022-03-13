@@ -6,14 +6,15 @@ authors = ["Sergey <Mikulenko345@rambler.ru>"]
 
 [tool.poetry.dependencies]
 python = "^3.10"
-Django = "^4.0.2"
 Pillow = "^9.0.1"
 django-rest-framework = "^0.1.0"
 psycopg2 = "^2.9.3"
 djoser = "^2.1.0"
-celery = "^5.2.3"
 redis = "^4.1.4"
-
+django-celery-results = "^2.3.0"
+django-celery-beat = "^2.2.1"
+Django = "^3.2.12"
+celery = "^5.2.3"
 [tool.poetry.dev-dependencies]
 
 [build-system]

@@ -5,6 +5,7 @@ from root.serializers import CreateUserSerializer, AccountOrdersSerializer, Logi
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
 from product.models import Bucket, Order
 from root.utils.account import count_amount_of_accrued_cashback
 
@@ -60,7 +61,8 @@ class AccountOrdersPayAPI(APIView):
         order = Order.objects.get(id=order_id)
         if order.payment_status:
             return Response("This order has already been paid.", status=status.HTTP_406_NOT_ACCEPTABLE)
+        order.payment_status = True
+        order.save()
         count_amount_of_accrued_cashback(user=user, order=order)
         return Response("Payment completed successfully", status=status.HTTP_200_OK)
-
 

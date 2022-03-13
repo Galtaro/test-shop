@@ -1,6 +1,8 @@
 from rest_framework import status
-from product.models import BucketItems
+
 from django.db.models import F
+
+from product.models import BucketItems
 
 
 def create_bucket_item(item_count, item_id, bucket_id):

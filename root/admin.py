@@ -1,4 +1,5 @@
 from django.contrib import admin
+
 from root.models import CustomUser
 
 
@@ -9,4 +10,3 @@ class CustomUserAdmin(admin.ModelAdmin):
 
 
 admin.site.register(CustomUser, CustomUserAdmin)
-
