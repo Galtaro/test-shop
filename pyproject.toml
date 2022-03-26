@@ -15,6 +15,7 @@ django-celery-results = "^2.3.0"
 django-celery-beat = "^2.2.1"
 Django = "^3.2.12"
 celery = "^5.2.3"
+django-ckeditor = "^6.2.0"
 [tool.poetry.dev-dependencies]
 
 [build-system]

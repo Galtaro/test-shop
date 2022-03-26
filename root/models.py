@@ -11,6 +11,7 @@ class CustomUser(AbstractUser):
         blank=True
     )
     amount_accrued_cashback = models.PositiveIntegerField(default=0)
+    receive_promotional_offers = models.BooleanField(default=False)
 
     class Meta(AbstractUser.Meta):
         swappable = 'AUTH_USER_MODEL'

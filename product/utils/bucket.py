@@ -1,4 +1,4 @@
-from django.db.models import F, Sum, Prefetch
+from django.db.models import F, Sum, Prefetch, When, Case, DecimalField
 
 from product.models import Item, Bucket, BucketItems, Order
 
@@ -13,7 +13,12 @@ def queryset_items_in_bucket_specific_user(user_id):
         total_price_item=F("price") * F("bucket_items_item__count"),
         count=F("bucket_items_item__count"),
         bucketitem_id=F("bucket_items_item__id"),
-        price_include_discount=F("price") * (100 - F("discount_percent")) / 100 * F("bucket_items_item__count")
+        price_include_discount=Case(
+            When(promotional_offer_item__discount_percent=None,
+                 then=F("price") * F("bucket_items_item__count")),
+            default=F("price") * (100 - F("promotional_offer_item__discount_percent")) / 100
+            * F("bucket_items_item__count"),
+            output_field=DecimalField())
     )
     return items_query
 
@@ -28,9 +33,13 @@ def queryset_bucket_specific_user(user_id):
         Prefetch("items", queryset_items_in_bucket_specific_user(user_id))
     ).annotate(
         bucket_total_price=Sum(
-            (F("items__price") * (100 - F("items__discount_percent")) / 100) * \
-            F("bucket_items_bucket__count")),
-        amount_accrued_cashback_=F("owner__amount_accrued_cashback")
+            Case(When(promotional_offer_item__discount_percent=None,
+                      then=F("items__price") * F("bucket_items_bucket__count")),
+                 default=(F("items__price") * (100 - F("promotional_offer_item__discount_percent")) / 100)
+                 * F("bucket_items_bucket__count"),
+                 output_field=DecimalField())
+            ),
+        amount_accrued_cashback=F("owner__amount_accrued_cashback")
     )
     return queryset_bucket
 

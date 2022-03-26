@@ -10,12 +10,11 @@ class Item(models.Model):
     description = models.TextField()
     price = models.DecimalField(max_digits=7, decimal_places=2)
     image = models.ImageField(upload_to="%Y/%m/%d")
-    discount_percent = models.PositiveIntegerField(
-        default=0,
-        validators=[validators.MinValueValidator(0), validators.MaxValueValidator(100)]
-    )
 
     objects = models.Manager()
+
+    def __str__(self):
+        return str(self.title)
 
 
 class Bucket(models.Model):
@@ -102,15 +101,26 @@ class Order(models.Model):
         on_delete=models.CASCADE,
         related_name="order_user"
     )
-    order_sum = models.DecimalField(max_digits=20, decimal_places=15)
+    order_sum = models.DecimalField(max_digits=6, decimal_places=2)
     order_date = models.DateField(auto_now_add=True)
     payment_status = models.BooleanField(default=False)
-    delivery_date_time = models.DateTimeField(blank=True, null=True)
+    delivery_date_time = models.DateTimeField(null=True)
     email_delivery_notification = models.ForeignKey(
         EmailDeliveryNotification,
         on_delete=models.SET_DEFAULT,
         default=1,
         related_name="order_emaildeliverynotification"
     )
+
+    objects = models.Manager()
+
+
+class PromotionalOffer(models.Model):
+    promotional_item = models.OneToOneField(Item, on_delete=models.CASCADE, related_name="promotional_offer_item")
+    discount_percent = models.PositiveIntegerField(
+        validators=[validators.MinValueValidator(0), validators.MaxValueValidator(100)]
+    )
+    promotional_price = models.DecimalField(max_digits=6, decimal_places=2)
+    validity = models.DateField()
 
     objects = models.Manager()

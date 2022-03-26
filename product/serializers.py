@@ -6,12 +6,13 @@ from datetime import timedelta
 from django.utils.timezone import now
 
 from product.models import Item, Bucket, Promocode, BucketItems, Cashback, UseCashbackAmount, EmailDeliveryNotification, \
-    Order
+    Order, PromotionalOffer
 
 
 class ListItemSerializer(HyperlinkedModelSerializer):
     detail = HyperlinkedIdentityField("Product:retrieve-item")
     price_include_discount = DecimalField(max_digits=7, decimal_places=2)
+    discount_percent = IntegerField(min_value=0, max_value=100)
 
     class Meta:
         model = Item
@@ -202,3 +203,17 @@ class CashbackPaymentSerializer(Serializer):
                 Try again"},
                 code='invalid')
         return attrs
+
+
+class CreatePromotionalOfferSerializer(ModelSerializer):
+
+    class Meta:
+        model = PromotionalOffer
+        fields = ["promotional_item", "discount_percent", "validity"]
+
+
+class UpdateDestroyPromotionalOfferSerializer(ModelSerializer):
+
+    class Meta:
+        model = PromotionalOffer
+        fields = "__all__"

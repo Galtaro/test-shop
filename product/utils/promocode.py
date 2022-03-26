@@ -1,7 +1,7 @@
 from decimal import Decimal
-from django.db.models import Sum, F, Q
+from django.db.models import Sum, F, Q, Case, When, DecimalField
 
-from product.models import Promocode, Bucket, Item, BucketItems
+from product.models import Promocode, Bucket, Item, BucketItems, PromotionalOffer
 
 
 def count_bucket_total_price_after_use_promocode(promocode_user, bucket_id):
@@ -44,8 +44,13 @@ def create_queryset_bucket_ann_bucket_total_price_with_promocode(bucket_id):
     queryset = Bucket.objects.filter(id=bucket_id
                                      ).annotate(
         bucket_total_price=Sum(
-            (F("items__price") * (100 - F("items__discount_percent")) / 100) * \
-            F("bucket_items_bucket__count")) * count_promocode_discount_coefficient()
+            Case(
+                When(promotional_offer_item__discount_percent=None,
+                     then=F("items__price") * F("bucket_items_bucket__count") * count_promocode_discount_coefficient()),
+                default=(F("items__price") * (100 - F("items__discount_percent")) / 100)
+                * F("bucket_items_bucket__count") * count_promocode_discount_coefficient(),
+                output_field=DecimalField())
+        )
     )
     return queryset
 
@@ -54,7 +59,7 @@ def count_item_bucket_without_discount():
     """Count price bucket item without discount"""
 
     item_bucket_without_discount = BucketItems.objects.filter(
-        Q(item__in=Item.objects.filter(discount_percent=0))
+        Q(item__in=PromotionalOffer.objects.all())
     )
     return item_bucket_without_discount
 
@@ -63,7 +68,7 @@ def count_item_bucket_with_discount():
     """Count price bucket item with discount"""
 
     item_bucket_with_discount = BucketItems.objects.exclude(
-        Q(item__in=Item.objects.filter(discount_percent=0))
+        Q(item__in=PromotionalOffer.objects.all())
     )
     return item_bucket_with_discount
 

@@ -1,4 +1,7 @@
-db.sqlite
+db.sqlite3
 media
 .idea
 /venv/
+/celerybeat-schedule.bak
+/celerybeat-schedule.dat
+/celerybeat-schedule.dir

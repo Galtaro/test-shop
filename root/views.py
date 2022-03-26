@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from product.models import Bucket, Order
+from product.models import Order, Bucket
 from root.utils.account import count_amount_of_accrued_cashback
 
 

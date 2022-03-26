@@ -1,6 +1,6 @@
 from rest_framework import status
 
-from django.db.models import F
+from django.db.models import F, Case, When, IntegerField, DecimalField
 
 from product.models import BucketItems
 
@@ -28,7 +28,15 @@ def queryset_bucket_items():
             title=F("item__title"),
             description=F("item__description"),
             price=F("item__price"),
-            discount_percent=F("item__discount_percent"),
-            total_price_item=F("count") * (F("item__price") * (100 - F("item__discount_percent")) / 100)
+            discount_percent=Case(
+                When(promotional_offer_item__discount_percent=None,
+                     then=0),
+                default=F("promotional_offer_item__discount_percent"),
+                output_field=IntegerField()),
+            total_price_item=Case(
+                When(promotional_offer_item__discount_percent=None,
+                     then=F("count") * F("item__price")),
+                default=F("count") * (F("item__price") * (100 - F("promotional_offer_item__discount_percent")) / 100),
+                output_field=DecimalField())
         )
     return queryset

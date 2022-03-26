@@ -3,7 +3,8 @@ from django.urls import path
 from product.views import ListApiItem, RetrieveApiItem, ListApiBucket, CreateApiBucketItem, \
     RetrieveApiBucketItem, UpdateDestroyApiBucketItem, CreateApiItem, UpdateDestroyApiItem, \
     UpdateApiDiscount, UpdateDestroyApiPromocode, ListCreateApiPromocode, UpdateApiBucketPromocodeTotalPrice, \
-    ListCreateApiCashback, UpdateApiCashback, CreateApiCheckout, ApiCashbackPayment
+    ListCreateApiCashback, UpdateApiCashback, CreateApiCheckout, ApiCashbackPayment, CreateApiPromotionalOffer, \
+    UpdateDestroyApiPromotionalOffer
 
 
 app_name = "Product"
@@ -16,8 +17,8 @@ urlpatterns = [
          name="update-destroy-item"),
     path('items/<int:pk>/add_to_bucket/', CreateApiBucketItem.as_view(),
          name="create-bucket-item"),
-    path('items/<int:pk>/update_discount/', UpdateApiDiscount.as_view(),
-         name="update-item-discount"),
+    # path('items/<int:pk>/update_discount/', UpdateApiDiscount.as_view(),
+    #      name="update-item-discount"),
     path('bucket/', ListApiBucket.as_view(), name="list-bucket-item"),
     path('bucket/items/<int:pk>/', RetrieveApiBucketItem.as_view(), name="retrieve-item-bucket"),
     path('bucket/items/<int:pk>/update_destroy_bucket_item/', UpdateDestroyApiBucketItem.as_view(),
@@ -32,4 +33,7 @@ urlpatterns = [
          name="update-destroy-promocode"),
     path('cashback/', ListCreateApiCashback.as_view(), name="list-create-cashback"),
     path('cashback/<int:pk>/update_cashback/', UpdateApiCashback.as_view(), name="update-cashback"),
+    path('promotional_offer/', CreateApiPromotionalOffer.as_view(), name="create-promotional-offer"),
+    path('promotional_offer/<int:pk>/update_destroy_promotional_offer/', UpdateDestroyApiPromotionalOffer.as_view(),
+         name="update-destroy-promotional-offer"),
 ]

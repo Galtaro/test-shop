@@ -1,8 +1,8 @@
-from rest_framework.serializers import Serializer, CharField, EmailField, ValidationError, IntegerField, \
+from rest_framework.serializers import Serializer, CharField, BooleanField, EmailField, ValidationError, IntegerField, \
     ModelSerializer
-from django.contrib.auth import get_user_model
 
-from product.models import Bucket, Order
+from product.models import Order, Bucket
+from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
@@ -16,6 +16,7 @@ class CreateUserSerializer(Serializer):
     password_1 = CharField(required=True, write_only=True)
     password_2 = CharField(required=True, write_only=True)
     phone = CharField(required=False)
+    receive_promotional_offers = BooleanField(initial=True)
 
     id = IntegerField(read_only=True)
 
@@ -30,7 +31,8 @@ class CreateUserSerializer(Serializer):
             first_name=validated_data["first_name"],
             last_name=validated_data["last_name"],
             email=validated_data["email"],
-            phone=validated_data.get("phone")
+            phone=validated_data.get("phone"),
+            receive_promotional_offers=validated_data.get("receive_promotional_offers")
         )
         user.set_password(validated_data["password_1"])
         user.save()

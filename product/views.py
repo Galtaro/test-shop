@@ -5,22 +5,20 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
-from django_celery_beat.models import PeriodicTask, ClockedSchedule
-from json import dumps
-from datetime import timedelta
-
-from product.models import Item, BucketItems, Promocode, Cashback, EmailDeliveryNotification
+from product.models import Item, BucketItems, Promocode, Cashback, EmailDeliveryNotification, PromotionalOffer
 from product.serializers import ListItemSerializer, RetrieveItemSerializer, ListBucketSerializer, \
     CreateBucketItemSerializer, RetrieveItemBucketSerializer, UpdateBucketItemsSerializer, \
     UpdateDiscountSerializer, CreateItemSerializer, UpdateItemSerializer, UpdatePromocodeSerializer, \
     ListPromocodeSerializer, UpdateBucketPromocodeTotalPriceSerializer, ListCashbackSerializer, \
-    UpdateCashbackSerializer, CreateCheckoutSerializer, CashbackPaymentSerializer
+    UpdateCashbackSerializer, CreateCheckoutSerializer, CashbackPaymentSerializer, CreatePromotionalOfferSerializer, \
+    UpdateDestroyPromotionalOfferSerializer
 from product.utils.bucket import queryset_bucket_specific_user, create_order
 from product.utils.bucket_item import create_bucket_item, queryset_bucket_items
 from product.utils.cashback import count_bucket_total_price_with_cashback
 from product.utils.create_tasks import create_task_send_notification
 from product.utils.item import create_queryset_item
 from product.utils.promocode import count_bucket_total_price_after_use_promocode, set_cookie_promocode
+
 
 class HasPermission(BasePermission):
 
@@ -201,4 +199,33 @@ class ApiCashbackPayment(APIView):
             {"bucket_total_price": bucket_total_price,
             "amount_accrued_cashback": user_cashback}
         )
+
+
+class CreateApiPromotionalOffer(CreateAPIView):
+    serializer_class = CreatePromotionalOfferSerializer
+    permission_classes = [IsAuthenticated, HasPermission]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        promotional_item = serializer.validated_data["promotional_item"]
+        discount_percent = serializer.validated_data["discount_percent"]
+        promotional_price = promotional_item.price * (100 - discount_percent)/100
+        validity = serializer.validated_data["validity"]
+        PromotionalOffer.objects.create(
+            promotional_item=promotional_item,
+            discount_percent=discount_percent,
+            promotional_price=promotional_price,
+            validity=validity
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+
+
+
+class UpdateDestroyApiPromotionalOffer(RetrieveUpdateDestroyAPIView):
+    serializer_class = UpdateDestroyPromotionalOfferSerializer
+    permission_classes = [IsAuthenticated, HasPermission]
+    queryset = PromotionalOffer.objects
 
