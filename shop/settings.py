@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-3rd^_%1ca^^edo%!viona0wj+_0)%leobo%6r^_7@r-&_6jf7g
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'djoser',
     'django_celery_results',
     'django_celery_beat',
+    'gunicorn'
 ]
 
 MIDDLEWARE = [
@@ -82,12 +83,20 @@ WSGI_APPLICATION = 'shop.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql_psycopg2',
-        'NAME': 'django_db',
-        'USER': 'django_user',
-        'PASSWORD': '1234',
-        'HOST': '127.0.0.1',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'postgres',
+        'USER': 'postgres',
+        'PASSWORD': 'example',
+        'HOST': 'db',
         'PORT': '5432',
+
+        # 'ENGINE': 'django.db.backends.postgresql_psycopg2',
+        # 'NAME': 'django_db',
+        # 'USER': 'django_user',
+        # 'PASSWORD': '1234',
+        # 'HOST': '127.0.0.1',
+        # 'PORT': '5432',
+
         # 'ENGINE': 'django.db.backends.sqlite3',
         # 'NAME': BASE_DIR / 'db.sqlite3',
     }
@@ -141,6 +150,7 @@ CELERY_TASK_TIME_LIMIT = 30 * 60
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/3.2/howto/static-files/
 
+STATIC_ROOT = '/static/'
 STATIC_URL = '/static/'
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
